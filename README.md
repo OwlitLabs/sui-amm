@@ -1,2 +1,2 @@
 # amm
-OwlSwap AMM
+Decentralized AMM based on SUI chain
