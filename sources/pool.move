@@ -4,12 +4,13 @@ module owlswap_amm::pool {
     use sui::object::{ID, UID};
     use sui::object;
     use sui::transfer;
-    use sui::coin::Coin;
+    use sui::coin::{Coin, CoinMetadata};
     use sui::balance::{Balance, Supply};
     use sui::balance;
     use sui::coin;
     use owlswap_amm::maths;
-
+    use sui::math;
+    use sui::clock::{Clock, timestamp_ms};
 
 
     const U64_MAX : u64 = 18446744073709551615;
@@ -49,36 +50,49 @@ module owlswap_amm::pool {
     struct Pool<phantom X, phantom Y> has key {
         id: UID,
         owner: address,
-        //
-        x_reserve: Balance<X>,
-        //
-        x_fee_percent: u64,
+
+        x_reserve: Balance<X>,              //X reserve amount
+        x_fee_percent: u64,                 //
         x_promoter: Balance<X>,
         x_foundation: Balance<X>,
+        x_scale: u64,
+
         y_reserve: Balance<Y>,
         y_fee_percent: u64,
         y_promoter: Balance<Y>,
         y_foundation: Balance<Y>,
-        lp_supply: Supply<LP<X, Y>>,
+        y_scale: u64,
 
+        lp_supply: Supply<LP<X, Y>>,
         min_liquidity: Balance<LP<X, Y>>,
+
+        create_time: u64,
+        trading_time: u64,
 
     }
 
-    public fun create_pool<X, Y>(x_fee: u64, y_fee: u64, ctx: &mut TxContext) : ID {
+    public fun create_pool<X, Y>(clock: &Clock, x_meta: &CoinMetadata<X>, x_fee: u64, y_meta: &CoinMetadata<Y> ,y_fee: u64, ctx: &mut TxContext) : ID {
         let pool = Pool<X, Y> {
             id: object::new(ctx),
             owner: sender(ctx),
+
             x_reserve: balance::zero<X>(),
             x_fee_percent: x_fee,
             x_promoter: balance::zero<X>(),
             x_foundation: balance::zero<X>(),
+            x_scale: math::pow(10, coin::get_decimals(x_meta)),
+
             y_reserve: balance::zero<Y>(),
             y_fee_percent: y_fee,
             y_promoter: balance::zero<Y>(),
             y_foundation: balance::zero<Y>(),
+            y_scale: math::pow(10, coin::get_decimals(y_meta)),
+
             lp_supply: balance::create_supply(LP<X, Y>{}),
-            min_liquidity:balance::zero<LP<X, Y>>()
+            min_liquidity:balance::zero<LP<X, Y>>(),
+
+            create_time: timestamp_ms(clock),
+            trading_time: 0,
         };
 
         let pool_id = object::id(&pool);

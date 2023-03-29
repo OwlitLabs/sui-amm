@@ -3,9 +3,9 @@ name = "owlswap_amm"
 version = "0.0.1"
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework", rev = "598f106ef5fbdfbe1b644236f0caf46c94f4d1b7" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "82c9c80c11488858f1d3930f47ec9f335a566683" }
 
 [addresses]
 owlswap_amm =  "0x0"
 zero = "0x0"
-sui =  "0000000000000000000000000000000000000002"
+sui =  "0000000000000000000000000000000000000000000000000000000000000002"

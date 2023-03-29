@@ -14,6 +14,7 @@ module owlswap_amm::store {
     use owlswap_amm::pool::{Self, Pool};
     use owlswap_amm::events;
     use sui::coin;
+    use std::vector;
 
     friend owlswap_amm::router;
 
@@ -22,7 +23,8 @@ module owlswap_amm::store {
     struct Control has key {
         id: UID,
         owner: address,
-        pools: Table<String, ID>,
+        pools_map: Table<String, ID>,
+        pools_all: vector<ID>,
         count: u64,
     }
 
@@ -30,7 +32,8 @@ module owlswap_amm::store {
         let store = Control{
             id: object::new(ctx),
             owner: sender(ctx),
-            pools: table::new<String, ID>(ctx),
+            pools_map: table::new<String, ID>(ctx),
+            pools_all: vector::empty(),
             count: 0,
         };
         transfer::share_object(store);
@@ -47,8 +50,8 @@ module owlswap_amm::store {
         let x_value = coin::value(&x_coin);
         let y_value = coin::value(&y_coin);
 
-        transfer::transfer(x_coin, recipient);
-        transfer::transfer(y_coin, recipient);
+        transfer::public_transfer(x_coin, recipient);
+        transfer::public_transfer(y_coin, recipient);
 
         events::emit_fundation_fee_withdraw(id(pool), x_value, y_value, recipient);
     }
@@ -59,13 +62,14 @@ module owlswap_amm::store {
 
     public(friend) fun add<X, Y>(control: &mut Control, id: ID) : String{
         let lp_name = get_name_x_y<X, Y>();
-        table::add(&mut control.pools, lp_name, id);
+        table::add(&mut control.pools_map, lp_name, id);
         control.count = control.count + 1;
+        vector::push_back(&mut control.pools_all, id);
         lp_name
     }
 
     public(friend) fun exist<X, Y>(control: &mut Control) : bool {
-        table::contains(&mut control.pools, get_name_x_y<X, Y>())
+        table::contains(&mut control.pools_map, get_name_x_y<X, Y>())
     }
 
     public fun get_name_x_y<X, Y>() : String {
