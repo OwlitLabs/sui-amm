@@ -1,8 +1,9 @@
 module owlswap_amm::events {
 
     use sui::event;
-    use sui::object::ID;
+    use sui::object::{ID};
     use std::string::String;
+    use sui::event::emit;
     friend owlswap_amm::pool;
 
     struct PoolCreated has drop, copy {
@@ -51,12 +52,26 @@ module owlswap_amm::events {
         })
     }
 
-    struct Swaped {
-
+    struct Swaped has drop, copy {
+        pool_id: ID,
+        sender: address,
+        x_in: u64,
+        x_out: u64,
+        y_in: u64,
+        y_out: u64,
+        time: u64
     }
 
-    public fun emit_swap() {
-
+    public fun emit_swap(pool_id: ID, sender: address, x_in: u64, x_out: u64, y_in: u64, y_out: u64, time: u64) {
+        emit(Swaped{
+            pool_id,
+            sender,
+            x_in,
+            x_out,
+            y_in,
+            y_out,
+            time
+        })
     }
 
     struct FundationFeeWithdrawal has drop, copy {

@@ -4,12 +4,11 @@ module owlswap_amm::pool {
     use sui::object::{ID, UID};
     use sui::object;
     use sui::transfer;
-    use sui::coin::{Coin, CoinMetadata};
+    use sui::coin::{Coin};
     use sui::balance::{Balance, Supply};
     use sui::balance;
     use sui::coin;
     use owlswap_amm::maths;
-    use sui::math;
     use sui::clock::{Clock, timestamp_ms};
 
 
@@ -42,6 +41,10 @@ module owlswap_amm::pool {
     const E_MIN_OUT_LIMIT : u64 = 510;
     const E_WITHDRAW_FEE_INSUFFICIENT : u64 = 511;
     const E_INCORRECT_SWAP : u64 = 512;
+    const E_INSUFFICIENT_INPUT : u64 = 513;
+    const E_INSUFFICIENT_LIQUIDITY : u64 = 514;
+
+
 
 
     struct LP<phantom X, phantom Y> has drop {
@@ -71,7 +74,7 @@ module owlswap_amm::pool {
 
     }
 
-    public fun create_pool<X, Y>(clock: &Clock, x_meta: &CoinMetadata<X>, x_fee: u64, y_meta: &CoinMetadata<Y> ,y_fee: u64, ctx: &mut TxContext) : ID {
+    public fun create_pool<X, Y>(clock: &Clock, x_scale: u64, x_fee: u64, y_scale: u64 ,y_fee: u64, ctx: &mut TxContext) : ID {
         let pool = Pool<X, Y> {
             id: object::new(ctx),
             owner: sender(ctx),
@@ -80,13 +83,13 @@ module owlswap_amm::pool {
             x_fee_percent: x_fee,
             x_promoter: balance::zero<X>(),
             x_foundation: balance::zero<X>(),
-            x_scale: math::pow(10, coin::get_decimals(x_meta)),
+            x_scale,
 
             y_reserve: balance::zero<Y>(),
             y_fee_percent: y_fee,
             y_promoter: balance::zero<Y>(),
             y_foundation: balance::zero<Y>(),
-            y_scale: math::pow(10, coin::get_decimals(y_meta)),
+            y_scale,
 
             lp_supply: balance::create_supply(LP<X, Y>{}),
             min_liquidity:balance::zero<LP<X, Y>>(),
@@ -186,7 +189,7 @@ module owlswap_amm::pool {
 
         let x_in_real_value = x_in_value - x_fee_foundation - x_fee_promoter;
 
-        let y_out_amount = get_amount_out(x_in_real_value, x_reserve, y_reserve);
+        let y_out_amount = calculate_amount_out(x_reserve, y_reserve, x_in_real_value);
         assert!(y_out_amount >= y_min_out, E_MIN_OUT_LIMIT);
 
         let x_balance = coin::into_balance(x_coin);
@@ -210,6 +213,7 @@ module owlswap_amm::pool {
 
     public fun swap_y_to_x<X, Y>(pool: &mut Pool<X, Y>, y_coin: Coin<Y>, x_min_out: u64, ctx: &mut TxContext) : Coin<X> {
 
+
         let (x_reserve, y_reserve, _) = get_reserves_size(pool);
 
         assert!(x_reserve > 0 && y_reserve > 0, E_RESERVES_EMPTY);
@@ -221,7 +225,8 @@ module owlswap_amm::pool {
 
         let y_in_real_value = y_in_value - y_fee_foundation - y_fee_promoter;
 
-        let x_out_amount = get_amount_out(y_in_real_value, x_reserve, y_reserve);
+        let x_out_amount = calculate_amount_out(y_reserve, x_reserve, y_in_real_value);
+
         assert!(x_out_amount >= x_min_out, E_MIN_OUT_LIMIT);
 
         let y_balance = coin::into_balance(y_coin);
@@ -279,7 +284,7 @@ module owlswap_amm::pool {
         assert!(x_value > 0 && y_value > 0, E_WITHDRAW_FEE_INSUFFICIENT);
 
         let x_promoter = balance::split(&mut pool.x_promoter, x_value);
-        let y_promoter = balance::split(&mut pool.y_promoter, x_value);
+        let y_promoter = balance::split(&mut pool.y_promoter, y_value);
 
         (coin::from_balance(x_promoter, ctx), coin::from_balance(y_promoter, ctx))
     }
@@ -334,21 +339,19 @@ module owlswap_amm::pool {
         )
     }
 
-    fun get_amount_out(
-        in_value: u64,
-        in_reserve: u64,
-        out_reserve: u64,
-    ): u64 {
-        maths::mul_div_u128((in_value as u128), (out_reserve as u128),(in_reserve as u128))
-    }
+    fun calculate_amount_out(in_reserve: u64, out_reserve: u64, in_amount: u64): u64 {
+        // Input validation.
+        assert!(in_amount > 0, E_INSUFFICIENT_INPUT);
+        assert!(in_reserve > 0 && out_reserve > 0, E_INSUFFICIENT_LIQUIDITY);
 
-    /*fun get_fee_for_fundation(
-        in_amount: u64,
-    ): u64 {
-        // 0.3% fee to swap fundation
-        //let fee_multiplier = FEE_MULTIPLIER / 5;
-        maths::mul_div(in_amount, FEE_FOUNDATION, FEE_SCALE)
-    }*/
+        // Calculate the amount of asset2 to buy.
+        let amount_in_with_fee = (in_amount as u128);
+        let numerator = amount_in_with_fee * (out_reserve as u128);
+        let denominator = (in_reserve as u128) + amount_in_with_fee;
+
+        // Return the amount of asset2 to buy.
+        (numerator/denominator as u64)
+    }
 
     fun get_fee(
         in_amount: u64,
