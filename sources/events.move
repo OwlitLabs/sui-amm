@@ -52,7 +52,7 @@ module owlswap_amm::events {
         })
     }
 
-    struct Swaped has drop, copy {
+    struct Swapped has drop, copy {
         pool_id: ID,
         sender: address,
         x_in: u64,
@@ -63,7 +63,7 @@ module owlswap_amm::events {
     }
 
     public fun emit_swap(pool_id: ID, sender: address, x_in: u64, x_out: u64, y_in: u64, y_out: u64, time: u64) {
-        emit(Swaped{
+        emit(Swapped{
             pool_id,
             sender,
             x_in,

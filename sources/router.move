@@ -10,16 +10,19 @@ module owlswap_amm::router {
     use owlswap_amm::events;
     use owlswap_amm::comparator;
     use std::type_name::get;
-    use sui::object::id;
+    use sui::object::{id, ID};
     use sui::clock::Clock;
     use sui::clock;
+    use std::string::String;
+
     #[test_only]
     use std::debug::print;
     use sui::math;
 
+
     const E_X_Y_ERROR: u64 = 600;
     const E_POOL_EXSIT: u64 = 601;
-    const E_X_Y_NOT_SORTED: u64 = 602;
+    //const E_X_Y_NOT_SORTED: u64 = 602;
     const E_LP_AMOUNT_ERROR: u64 = 603;
     const E_IN_AMOUNT_ERROR: u64 = 604;
     const E_X_Y_SAME: u64 = 605;
@@ -42,17 +45,22 @@ module owlswap_amm::router {
         y_decimals: u8,
         y_fee: u64,
         ctx: &mut TxContext) {
-        assert!(is_type_sorted<X, Y>(), E_X_Y_NOT_SORTED);
-        assert!(!control::exist<X, Y>(store), E_POOL_EXSIT);
-
+        //assert!(is_type_sorted<X, Y>(), E_X_Y_NOT_SORTED);
 
         let x_scale = math::pow(10, x_decimals);
         let y_scale = math::pow(10, y_decimals);
 
-        let pool_id = pool::create_pool<X, Y>(clock_target, x_scale, x_fee, y_scale, y_fee, ctx);
-
-        let lp_name = control::add<X, Y>(store, pool_id, sender(ctx));
-
+        let pool_id: ID;
+        let lp_name: String;
+        if(is_type_sorted<X, Y>()) {
+            assert!(!control::exist<X, Y>(store), E_POOL_EXSIT);
+            pool_id = pool::create_pool<X, Y>(clock_target, x_scale, x_fee, y_scale, y_fee, ctx);
+            lp_name = control::add<X, Y>(store, pool_id, sender(ctx));
+        } else {
+            assert!(!control::exist<Y, X>(store), E_POOL_EXSIT);
+            pool_id = pool::create_pool<Y, X>(clock_target, x_scale, x_fee, y_scale, y_fee, ctx);
+            lp_name = control::add<Y, X>(store, pool_id, sender(ctx));
+        };
         events::emit_pool_created(pool_id, sender(ctx), lp_name);
     }
 

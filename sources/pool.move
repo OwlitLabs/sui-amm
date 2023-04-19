@@ -270,7 +270,7 @@ module owlswap_amm::pool {
         assert!(x_value > 0 && y_value > 0, E_WITHDRAW_FEE_INSUFFICIENT);
 
         let x_foundation = balance::split(&mut pool.x_foundation, x_value);
-        let y_foundation = balance::split(&mut pool.y_foundation, x_value);
+        let y_foundation = balance::split(&mut pool.y_foundation, y_value);
 
         (coin::from_balance(x_foundation, ctx), coin::from_balance(y_foundation, ctx))
     }
