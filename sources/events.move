@@ -8,15 +8,15 @@ module owlswap_amm::events {
 
     struct PoolCreated has drop, copy {
         pool_id: ID,
-        sender: address,
-        lp_name: String
+        x_token: String,
+        y_token: String,
     }
 
-    public fun emit_pool_created(pool_id: ID, sender: address, lp_name: String) {
+    public fun emit_pool_created(pool_id: ID, x_token: String, y_token: String) {
         event::emit(PoolCreated{
             pool_id,
-            sender,
-            lp_name
+            x_token,
+            y_token
         });
     }
 
@@ -25,14 +25,16 @@ module owlswap_amm::events {
         x_amount: u64,
         y_amount: u64,
         lp_amount: u64,
+        index: u64
     }
 
-    public fun emit_liqudity_added(pool_id: ID, x_amount: u64, y_amount: u64, lp_amount: u64) {
+    public fun emit_liqudity_added(pool_id: ID, x_amount: u64, y_amount: u64, lp_amount: u64, index: u64) {
         event::emit(LiquidityAdded{
             pool_id,
             x_amount,
             y_amount,
-            lp_amount
+            lp_amount,
+            index,
         })
     }
 
@@ -41,14 +43,16 @@ module owlswap_amm::events {
         x_amount: u64,
         y_amount: u64,
         lp_amount: u64,
+        index: u64
     }
 
-    public fun emit_liqudity_removed(pool_id: ID, x_amount: u64, y_amount: u64, lp_amount: u64) {
-        event::emit(LiquidityAdded{
+    public fun emit_liqudity_removed(pool_id: ID, x_amount: u64, y_amount: u64, lp_amount: u64, index: u64) {
+        event::emit(LiquidityRemoved{
             pool_id,
             x_amount,
             y_amount,
-            lp_amount
+            lp_amount,
+            index
         })
     }
 
@@ -59,10 +63,10 @@ module owlswap_amm::events {
         x_out: u64,
         y_in: u64,
         y_out: u64,
-        time: u64
+        index: u64
     }
 
-    public fun emit_swap(pool_id: ID, sender: address, x_in: u64, x_out: u64, y_in: u64, y_out: u64, time: u64) {
+    public fun emit_swap(pool_id: ID, sender: address, x_in: u64, x_out: u64, y_in: u64, y_out: u64, index: u64) {
         emit(Swapped{
             pool_id,
             sender,
@@ -70,19 +74,19 @@ module owlswap_amm::events {
             x_out,
             y_in,
             y_out,
-            time
+            index
         })
     }
 
-    struct FundationFeeWithdrawal has drop, copy {
+    struct TransactionFeeWithdrawal has drop, copy {
         pool_id: ID,
         x_amount: u64,
         y_amount: u64,
         recipient: address
     }
 
-    public fun emit_fundation_fee_withdraw(pool_id: ID, x_amount: u64, y_amount: u64, recipient: address) {
-        event::emit(FundationFeeWithdrawal{
+    public fun emit_transaction_fee_withdraw(pool_id: ID, x_amount: u64, y_amount: u64, recipient: address) {
+        event::emit(TransactionFeeWithdrawal{
             pool_id,
             x_amount,
             y_amount,
@@ -90,31 +94,37 @@ module owlswap_amm::events {
         });
     }
 
-    struct PromoterFeeWithdraw has drop, copy {
+    struct PoolFeeWithdraw has drop, copy {
         pool_id: ID,
         x_amount: u64,
         y_amount: u64,
         recipient: address
     }
-    public fun emit_promoter_fee_withdraw(pool_id: ID, x_amount: u64, y_amount: u64, recipient: address) {
-        event::emit(PromoterFeeWithdraw{
+    public fun emit_pool_fee_withdraw(pool_id: ID, x_amount: u64, y_amount: u64, recipient: address) {
+        event::emit(PoolFeeWithdraw{
             pool_id,
             x_amount,
             y_amount,
-            recipient
+            recipient,
         });
     }
 
-    struct PoolFeeUpdated has drop, copy {
+    struct PoolFeeConfigUpdated has drop, copy {
         pool_id: ID,
-        old_fee: u64,
-        new_fee: u64
+        old_x_fee: u32,
+        old_y_fee: u32,
+        new_x_fee: u32,
+        new_y_fee: u32,
+        time: u64
     }
-    public fun emit_pool_fee_updated(pool_id: ID, old_fee: u64, new_fee: u64) {
-        event::emit(PoolFeeUpdated{
+    public fun emit_pool_fee_config_updated(pool_id: ID, old_x_fee: u32,old_y_fee: u32, new_x_fee: u32, new_y_fee: u32, time: u64) {
+        event::emit(PoolFeeConfigUpdated{
             pool_id,
-            old_fee,
-            new_fee
+            old_x_fee,
+            old_y_fee,
+            new_x_fee,
+            new_y_fee,
+            time
         });
     }
 

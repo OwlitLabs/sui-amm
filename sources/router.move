@@ -1,6 +1,6 @@
 module owlswap_amm::router {
 
-    use owlswap_amm::control::{Self, Store};
+    use owlswap_amm::control::{Self, Store, get_name};
     use sui::tx_context::{TxContext, sender};
     use owlswap_amm::pool::{Self, Pool, LP};
     use sui::coin::{Coin};
@@ -11,12 +11,7 @@ module owlswap_amm::router {
     use owlswap_amm::comparator;
     use std::type_name::get;
     use sui::object::{id, ID};
-    use sui::clock::Clock;
-    use sui::clock;
-    use std::string::String;
-
-    #[test_only]
-    use std::debug::print;
+    use sui::clock::{Clock, timestamp_ms};
     use sui::math;
 
 
@@ -26,6 +21,8 @@ module owlswap_amm::router {
     const E_LP_AMOUNT_ERROR: u64 = 603;
     const E_IN_AMOUNT_ERROR: u64 = 604;
     const E_X_Y_SAME: u64 = 605;
+    const E_MUST_HAV_X_COIN : u64 = 606;
+    const E_MUST_HAV_Y_COIN : u64 = 607;
 
     fun is_type_sorted<X, Y>(): bool {
         let comp = comparator::compare(&get<X>(), &get<Y>());
@@ -41,30 +38,39 @@ module owlswap_amm::router {
         store: &mut Store,
         clock_target: &Clock,
         x_decimals: u8,
-        x_fee: u64,
+        x_fee: u32,
+        x_coin_check: &Coin<X>,
         y_decimals: u8,
-        y_fee: u64,
+        y_fee: u32,
+        y_coin_check: &Coin<Y>,
+        trading_time: u64,
         ctx: &mut TxContext) {
-        //assert!(is_type_sorted<X, Y>(), E_X_Y_NOT_SORTED);
+
+        control::check_version(store);
+
+        assert!(coin::value(x_coin_check) > 0, E_MUST_HAV_X_COIN);
+        assert!(coin::value(y_coin_check) > 0, E_MUST_HAV_Y_COIN);
 
         let x_scale = math::pow(10, x_decimals);
         let y_scale = math::pow(10, y_decimals);
 
         let pool_id: ID;
-        let lp_name: String;
+
         if(is_type_sorted<X, Y>()) {
             assert!(!control::exist<X, Y>(store), E_POOL_EXSIT);
-            pool_id = pool::create_pool<X, Y>(clock_target, x_scale, x_fee, y_scale, y_fee, ctx);
-            lp_name = control::add<X, Y>(store, pool_id, sender(ctx));
+            pool_id = pool::create_pool<X, Y>(clock_target, x_scale, x_fee, y_scale, y_fee, trading_time, ctx);
+            control::add<X, Y>(store, pool_id, sender(ctx));
         } else {
             assert!(!control::exist<Y, X>(store), E_POOL_EXSIT);
-            pool_id = pool::create_pool<Y, X>(clock_target, x_scale, x_fee, y_scale, y_fee, ctx);
-            lp_name = control::add<Y, X>(store, pool_id, sender(ctx));
+            pool_id = pool::create_pool<Y, X>(clock_target, x_scale, x_fee, y_scale, y_fee, trading_time, ctx);
+            control::add<Y, X>(store, pool_id, sender(ctx));
         };
-        events::emit_pool_created(pool_id, sender(ctx), lp_name);
+
+        events::emit_pool_created(pool_id, get_name<X>(), get_name<Y>());
     }
 
     entry fun add_liquidity<X, Y>(
+        store: &mut Store,
         pool: &mut Pool<X, Y>,
         x_coins: vector<Coin<X>>,
         x_amount: u64,
@@ -73,6 +79,9 @@ module owlswap_amm::router {
         y_amount: u64,
         y_min: u64,
         ctx: &mut TxContext) {
+
+        control::check_version(store);
+
         assert!(x_amount > 0 && x_amount > 0, E_X_Y_ERROR);
 
         let x_coin = coin::zero<X>(ctx);
@@ -84,7 +93,7 @@ module owlswap_amm::router {
         let x_coin_real = coin::split(&mut x_coin, x_amount, ctx);
         let y_coin_real = coin::split(&mut y_coin, y_amount, ctx);
 
-        let (lp_coin, x_coin_last, y_coin_last) = pool::add_liquidity(
+        let (lp_coin, x_coin_value, y_coin_value, tx_index) = pool::add_liquidity(
             pool,
             x_coin_real,
             x_min,
@@ -93,30 +102,32 @@ module owlswap_amm::router {
             ctx
         );
 
-        coin::join(&mut x_coin, x_coin_last);
-        coin::join(&mut y_coin, y_coin_last);
+        let lp_value = coin::value(&lp_coin);
 
-        if (coin::value(&x_coin) > 0) {
+        if(coin::value(&x_coin) > 0) {
             transfer::public_transfer(x_coin, sender(ctx));
         } else {
             coin::destroy_zero(x_coin);
         };
-
-        if (coin::value(&y_coin) > 0) {
+        if(coin::value(&y_coin) > 0) {
             transfer::public_transfer(y_coin, sender(ctx));
         } else {
             coin::destroy_zero(y_coin);
         };
 
         transfer::public_transfer(lp_coin, sender(ctx));
-        events::emit_liqudity_added(id(pool), 0, 0, 0);
+        events::emit_liqudity_added(id(pool), x_coin_value, y_coin_value, lp_value, tx_index);
     }
 
     entry fun remove_liquidity<X, Y>(
+        store: &mut Store,
         pool: &mut Pool<X, Y>,
         lp_coins: vector<Coin<LP<X, Y>>>,
         lp_amount: u64,
         ctx: &mut TxContext) {
+
+        control::check_version(store);
+
         assert!(lp_amount > 0, E_LP_AMOUNT_ERROR);
 
         let lp_coin = coin::zero<LP<X, Y>>(ctx);
@@ -124,20 +135,25 @@ module owlswap_amm::router {
 
         let lp_real = coin::split(&mut lp_coin, lp_amount, ctx);
 
-        let (burned_amount, x_coin, y_coin) = pool::remove_liqudity(pool, lp_real, ctx);
+        let (burned_amount, x_coin, y_coin, tx_index) = pool::remove_liqudity(pool, lp_real, ctx);
+
+        let x_value = coin::value(&x_coin);
+        let y_value = coin::value(&y_coin);
 
         transfer::public_transfer(x_coin, sender(ctx));
         transfer::public_transfer(y_coin, sender(ctx));
+
         if (coin::value(&lp_coin) > 0) {
             transfer::public_transfer(lp_coin, sender(ctx));
         } else {
             coin::destroy_zero(lp_coin);
         };
 
-        events::emit_liqudity_removed(id(pool), 0, 0, burned_amount);
+        events::emit_liqudity_removed(id(pool), x_value, y_value, burned_amount, tx_index);
     }
 
     entry fun swap_x_to_y<X, Y>(
+        store: &mut Store,
         pool: &mut Pool<X, Y>,
         clock_target: &Clock,
         x_coins: vector<Coin<X>>,
@@ -145,6 +161,8 @@ module owlswap_amm::router {
         y_min_out: u64,
         ctx: &mut TxContext
     ) {
+        control::check_version(store);
+
         assert!(x_amount > 0, E_IN_AMOUNT_ERROR);
 
         let x_coin = coin::zero<X>(ctx);
@@ -152,7 +170,7 @@ module owlswap_amm::router {
 
         let x_coin_real = coin::split(&mut x_coin, x_amount, ctx);
 
-        let  y_coin = pool::swap_x_to_y(pool, x_coin_real, y_min_out, ctx);
+        let  (y_coin, tx_index) = pool::swap_x_to_y(pool, clock_target, x_coin_real, y_min_out, ctx);
 
         let y_amount = coin::value(&y_coin);
 
@@ -164,10 +182,11 @@ module owlswap_amm::router {
 
         transfer::public_transfer(y_coin, sender(ctx));
 
-        events::emit_swap(id(pool), sender(ctx), x_amount, 0, 0, y_amount, clock::timestamp_ms(clock_target));
+        events::emit_swap(id(pool), sender(ctx), x_amount, 0, 0, y_amount, tx_index);
     }
 
     entry fun swap_y_to_x<X, Y>(
+        store: &mut Store,
         pool: &mut Pool<X, Y>,
         clock_target: &Clock,
         y_coins: vector<Coin<Y>>,
@@ -175,6 +194,8 @@ module owlswap_amm::router {
         x_min_out: u64,
         ctx: &mut TxContext
     ) {
+        control::check_version(store);
+
         assert!(y_amount > 0, E_IN_AMOUNT_ERROR);
 
         let y_coin = coin::zero<Y>(ctx);
@@ -182,7 +203,7 @@ module owlswap_amm::router {
 
         let y_coin_real = coin::split(&mut y_coin, y_amount, ctx);
 
-        let x_coin = pool::swap_y_to_x(pool, y_coin_real, x_min_out, ctx);
+        let (x_coin, tx_index) = pool::swap_y_to_x(pool, clock_target, y_coin_real, x_min_out, ctx);
 
         let x_amount = coin::value(&x_coin);
 
@@ -194,12 +215,15 @@ module owlswap_amm::router {
 
         transfer::public_transfer(x_coin, sender(ctx));
 
-        events::emit_swap(id(pool), sender(ctx), 0, x_amount, y_amount, 0, clock::timestamp_ms(clock_target));
+        events::emit_swap(id(pool), sender(ctx), 0, x_amount, y_amount, 0, tx_index);
     }
 
 
-    entry fun withdraw<X, Y>(pool: &mut Pool<X, Y>, recipient: address, ctx: &mut TxContext) {
-        let (x_coin, y_coin) = pool::withdraw_promoter_fee(pool, ctx);
+    entry fun withdraw<X, Y>(store: &mut Store, pool: &mut Pool<X, Y>,  recipient: address, ctx: &mut TxContext) {
+
+        control::check_version(store);
+
+        let (x_coin, y_coin) = pool::withdraw_pool_fee(pool, ctx);
 
         if (recipient == @zero) {
             recipient = sender(ctx);
@@ -211,16 +235,21 @@ module owlswap_amm::router {
         transfer::public_transfer(x_coin, recipient);
         transfer::public_transfer(y_coin, recipient);
 
-        events::emit_promoter_fee_withdraw(id(pool), x_value, y_value, recipient);
+        events::emit_pool_fee_withdraw(id(pool), x_value, y_value, recipient);
     }
 
     entry fun update_pool_fee<X, Y>(
+        store: &mut Store,
         pool: &mut Pool<X, Y>,
-        x_fee: u64,
-        y_fee: u64,
+        clock_target: &Clock,
+        x_fee_rate: u32,
+        y_fee_rate: u32,
         ctx: &mut TxContext) {
-        pool::update_fee(pool, x_fee, y_fee, ctx);
-        events::emit_pool_fee_updated(id(pool), x_fee, y_fee);
+
+        control::check_version(store);
+
+        let (old_x, old_y, new_x, new_y) = pool::update_pool_fee_config(pool, x_fee_rate, y_fee_rate, ctx);
+        events::emit_pool_fee_config_updated(id(pool), old_x, old_y, new_x, new_y, timestamp_ms(clock_target));
     }
 
     entry fun update_pool_owner<X, Y>(
@@ -228,22 +257,12 @@ module owlswap_amm::router {
         pool: &mut Pool<X, Y>,
         new_owner: address,
         ctx: &mut TxContext) {
+
+        control::check_version(store);
+
         let old_onwer = pool::update_owner(pool, new_owner, ctx);
         control::owner_change(store, id(pool), old_onwer, new_owner);
         events::emit_pool_owner_updated(id(pool), old_onwer, new_owner);
     }
 
-    public entry fun test_event() {
-        events::test(1);
-    }
-
-    // === Test-only code ===
-    #[test]
-    public fun test_create_pool() {
-
-
-
-
-        print(&2);
-    }
 }
